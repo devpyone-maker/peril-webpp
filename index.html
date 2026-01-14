@@ -518,9 +518,10 @@
     
     <script>
         // Configuração da API - ENDPOINTS ATUALIZADOS
-        const API_BASE_URL = 'https://arts-aware-tions-characteristic.trycloudflare.com/api';
-        const API_DASHBOARD_URL = `${API_BASE_URL}/dashboard/all`;
-        const API_USER_INFO_URL = `${API_BASE_URL}/user/info`;
+        const API_BASE_URL = 'http://209.50.229.142';
+        const API_DASHBOARD_URL = `${API_BASE_URL}/api/dashboard/all`;
+        const API_USER_INFO_URL = `${API_BASE_URL}/api/user/info`;
+        const API_HEALTH_URL = `${API_BASE_URL}/health`;
         
         let currentUser = null;
         let tg = null;
@@ -552,9 +553,6 @@
             if (window.Telegram && window.Telegram.WebApp) {
                 tg = window.Telegram.WebApp;
                 
-                // ✅ TESTE RÁPIDO (REMOVA DEPOIS)
-                alert("initData vazio? " + !tg.initData);
-                
                 // Configurar tema
                 tg.setHeaderColor('#2563eb');
                 tg.setBackgroundColor('#0f172a');
@@ -569,13 +567,32 @@
                 console.log('initData presente?', !!tg.initData);
                 console.log('initData (primeiros 100 chars):', tg.initData ? tg.initData.substring(0, 100) + '...' : 'Vazio');
                 
-                // Carregar dados iniciais
-                loadDashboard();
+                // Testar API primeiro
+                testAPI();
                 
             } else {
                 console.error('❌ Telegram WebApp não detectado');
                 showError('Abra este painel pelo Telegram (bot) para carregar seus dados.');
                 return;
+            }
+        }
+
+        // Testar conexão com API
+        async function testAPI() {
+            try {
+                console.log('🔄 Testando conexão com API...');
+                
+                // Testar endpoint de health
+                const healthResponse = await fetch(API_HEALTH_URL);
+                const healthData = await healthResponse.text();
+                console.log('✅ Health Check:', healthData);
+                
+                // Carregar dados iniciais
+                loadDashboard();
+                
+            } catch (error) {
+                console.error('❌ Erro ao testar API:', error);
+                showError(`Falha ao conectar com a API. Verifique se o servidor está online.`);
             }
         }
 
@@ -601,39 +618,56 @@
             }
         }
 
-        // ✅ FUNÇÃO PARA ENVIAR DADOS AUTENTICADOS - COM DEBUG COMPLETO
+        // ✅ FUNÇÃO PARA ENVIAR DADOS AUTENTICADOS
         async function sendAuthenticatedRequest(url, method = 'POST', data = {}) {
-            const payload = { initData: tg?.initData || "", ...data };
+            // Verificar se temos initData
+            if (!tg?.initData) {
+                console.error('❌ initData não disponível');
+                throw new Error('Autenticação não disponível. Reabra o painel pelo Telegram.');
+            }
+
+            const payload = { 
+                initData: tg.initData,
+                ...data 
+            };
 
             console.log('📤 Enviando requisição para:', url);
-            console.log('initData presente?', tg?.initData ? 'SIM' : 'NÃO');
-            console.log('Payload:', JSON.stringify(payload).substring(0, 200) + '...');
+            console.log('Payload (início):', JSON.stringify(payload).substring(0, 200) + '...');
 
-            const resp = await fetch(url, {
-                method,
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
+            try {
+                const resp = await fetch(url, {
+                    method,
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    },
+                    body: JSON.stringify(payload),
+                });
 
-            const text = await resp.text(); // pega corpo SEMPRE
+                const text = await resp.text();
+                console.log('📥 Resposta status:', resp.status);
+                console.log('📥 Resposta corpo (início):', text.substring(0, 500) + '...');
 
-            // tenta parsear JSON, mas não quebra se não for
-            let json = null;
-            try { 
-                json = JSON.parse(text); 
-                console.log('📥 Resposta JSON:', json);
-            } catch(e) {
-                console.log('📥 Resposta NÃO-JSON:', text.substring(0, 200));
+                // Tentar parsear JSON
+                let json = null;
+                try { 
+                    json = JSON.parse(text); 
+                } catch(e) {
+                    console.warn('⚠️ Resposta não é JSON válido:', text.substring(0, 200));
+                }
+
+                // Verificar se há erro HTTP
+                if (!resp.ok) {
+                    const errorMsg = json?.error || json?.message || text || `HTTP ${resp.status}`;
+                    throw new Error(errorMsg);
+                }
+
+                return json || { success: false, error: "Resposta inválida da API" };
+                
+            } catch (error) {
+                console.error('❌ Erro na requisição:', error);
+                throw error;
             }
-
-            // se deu erro HTTP, joga a mensagem completa
-            if (!resp.ok) {
-                console.error(`❌ HTTP ${resp.status}:`, text);
-                throw new Error(`HTTP ${resp.status} - ${text}`);
-            }
-
-            // se não conseguiu parsear JSON, ainda retorna algo
-            return json ?? { raw: text };
         }
 
         // FUNÇÃO PRINCIPAL PARA CARREGAR DASHBOARD
@@ -645,7 +679,7 @@
                 
                 // Verificar se a resposta tem sucesso
                 if (!res.success) {
-                    throw new Error(res.error || 'Erro desconhecido');
+                    throw new Error(res.error || 'Erro desconhecido ao carregar dashboard');
                 }
                 
                 currentUser = res.user;
@@ -660,8 +694,7 @@
                 
             } catch (error) {
                 console.error('❌ Erro ao carregar dashboard:', error);
-                // ✅ MOSTRA O ERRO REAL
-                showError(error.message);
+                showError(`Erro ao carregar dashboard: ${error.message}`);
             }
         }
 
@@ -673,7 +706,7 @@
                 const res = await sendAuthenticatedRequest(API_USER_INFO_URL);
                 
                 if (!res.success) {
-                    throw new Error(res.error || "Erro desconhecido");
+                    throw new Error(res.error || "Erro desconhecido ao carregar informações da conta");
                 }
                 
                 const user = res.data;
@@ -703,7 +736,7 @@
                 const res = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
                 if (!res.success) {
-                    throw new Error(res.error || 'Erro desconhecido');
+                    throw new Error(res.error || 'Erro ao carregar histórico de SMS');
                 }
                 
                 window.smsLoaded = true;
@@ -729,7 +762,7 @@
                 const res = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
                 if (!res.success) {
-                    throw new Error(res.error || 'Erro desconhecido');
+                    throw new Error(res.error || 'Erro ao carregar histórico de cartões');
                 }
                 
                 window.cardsLoaded = true;
