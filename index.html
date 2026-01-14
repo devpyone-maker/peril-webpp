@@ -513,10 +513,17 @@
         </div>
     </div>
 
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
     <script>
         // Configuração da API
-        const API_BASE_URL = 'https://seuservidor.com/api'; // Substitua pelo seu domínio
+        const API_BASE_URL = 'http://209.50.229.142:8080/api';
+        const API_DASHBOARD_URL = `${API_BASE_URL}/dashboard/all`;
+        const API_USER_INFO_URL = `${API_BASE_URL}/user/info`;
+        
         let currentUser = null;
+        let tg = null;
 
         // Elementos DOM
         const tabs = document.querySelectorAll('.tab');
@@ -537,17 +544,61 @@
             });
 
             // Inicializar Telegram WebApp
+            initTelegramWebApp();
+        });
+
+        // Inicializar Telegram WebApp
+        function initTelegramWebApp() {
             if (window.Telegram && window.Telegram.WebApp) {
-                const tg = window.Telegram.WebApp;
-                tg.ready();
+                tg = window.Telegram.WebApp;
+                
+                // Configurar tema
+                tg.setHeaderColor('#2563eb');
+                tg.setBackgroundColor('#0f172a');
+                
+                // Expandir para tela cheia
                 tg.expand();
+                
+                // Preparar o app
+                tg.ready();
+                
+                // Mostrar botão principal (se necessário)
+                tg.MainButton.setText("RECARREGAR");
+                tg.MainButton.onClick(loadDashboard);
+                tg.MainButton.show();
+                
+                console.log('Telegram WebApp inicializado:', tg.initData);
                 
                 // Carregar dados iniciais
                 loadDashboard();
+                
             } else {
-                showError('Acesse pelo Telegram para usar este WebApp');
+                console.warn('Telegram WebApp não detectado. Modo de desenvolvimento ativado.');
+                showError('Acesse pelo Telegram para usar este WebApp. Modo de desenvolvimento ativado.');
+                // Para testes sem Telegram
+                simulateTelegramInit();
             }
-        });
+        }
+
+        // Simular inicialização do Telegram para testes
+        function simulateTelegramInit() {
+            tg = {
+                initData: 'fake_init_data_for_development',
+                expand: () => console.log('Simulando expandir'),
+                ready: () => console.log('Simulando ready'),
+                setHeaderColor: () => {},
+                setBackgroundColor: () => {},
+                MainButton: {
+                    setText: () => {},
+                    onClick: () => {},
+                    show: () => {},
+                    hide: () => {}
+                }
+            };
+            
+            // Carregar dados de teste
+            setTimeout(() => loadDashboard(), 1000);
+        }
 
         // Funções de navegação
         function switchTab(tabId) {
@@ -571,74 +622,81 @@
             }
         }
 
-        // Função principal para carregar dashboard
-        async function loadDashboard() {
+        // Função para enviar dados autenticados
+        async function sendAuthenticatedRequest(url, method = 'POST', data = {}) {
             try {
-                const tg = window.Telegram?.WebApp;
-                if (!tg) throw new Error('Telegram não detectado');
-
-                const response = await fetch(`${API_BASE_URL}/dashboard/all`, {
-                    method: 'POST',
+                const payload = {
+                    initData: tg.initData,
+                    ...data
+                };
+                
+                const response = await fetch(url, {
+                    method: method,
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        initData: tg.initData
-                    })
+                    body: JSON.stringify(payload)
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('Erro na requisição:', error);
+                throw error;
+            }
+        }
 
-                if (!response.ok) throw new Error('Erro na API');
+        // Função principal para carregar dashboard
+        async function loadDashboard() {
+            try {
+                showLoading('recentActivity');
                 
-                const data = await response.json();
+                const data = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
-                if (!data.success) throw new Error(data.error || 'Erro desconhecido');
+                // Verificar se a resposta tem sucesso
+                if (data.error) {
+                    throw new Error(data.error || 'Erro desconhecido');
+                }
                 
                 // Atualizar informações do usuário
-                currentUser = data.user;
+                currentUser = data.user || data;
                 updateUserInfo();
                 
                 // Atualizar estatísticas
                 updateStats(data);
                 
                 // Atualizar contadores
-                document.getElementById('smsCount').textContent = data.counts?.sms || 0;
-                document.getElementById('cardsCount').textContent = data.counts?.cards || 0;
+                document.getElementById('smsCount').textContent = data.counts?.sms || data.sms_count || 0;
+                document.getElementById('cardsCount').textContent = data.counts?.cards || data.cards_count || 0;
                 
                 // Atualizar atividade recente
-                updateRecentActivity(data.sms_history, data.cards_history);
+                updateRecentActivity(data.sms_history || data.sms, data.cards_history || data.cards);
                 
             } catch (error) {
                 console.error('Erro ao carregar dashboard:', error);
                 showError('Erro ao carregar dados. Tente novamente.');
+                
+                // Tenta carregar informações do usuário separadamente
+                loadAccountInfo();
             }
         }
 
         // Carregar histórico de SMS
         async function loadSMSHistory() {
             try {
-                const tg = window.Telegram?.WebApp;
-                if (!tg) throw new Error('Telegram não detectado');
-
                 showLoading('smsTable');
                 
-                const response = await fetch(`${API_BASE_URL}/sms/history`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        initData: tg.initData
-                    })
-                });
-
-                if (!response.ok) throw new Error('Erro na API');
+                const data = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
-                const data = await response.json();
-                
-                if (!data.success) throw new Error(data.error || 'Erro desconhecido');
+                if (data.error) {
+                    throw new Error(data.error || 'Erro desconhecido');
+                }
                 
                 window.smsLoaded = true;
-                renderSMSHistory(data.data);
+                renderSMSHistory(data.sms_history || data.sms || []);
                 
             } catch (error) {
                 console.error('Erro ao carregar histórico SMS:', error);
@@ -646,6 +704,7 @@
                     <div class="empty-state">
                         <i class="fas fa-exclamation-triangle fa-2x"></i>
                         <p>Erro ao carregar histórico de SMS</p>
+                        <p style="font-size: 0.9rem; margin-top: 10px;">${error.message}</p>
                     </div>
                 `;
             }
@@ -654,29 +713,16 @@
         // Carregar histórico de cartões
         async function loadCardsHistory() {
             try {
-                const tg = window.Telegram?.WebApp;
-                if (!tg) throw new Error('Telegram não detectado');
-
                 showLoading('cardsTable');
                 
-                const response = await fetch(`${API_BASE_URL}/cards/history`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        initData: tg.initData
-                    })
-                });
-
-                if (!response.ok) throw new Error('Erro na API');
+                const data = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
-                const data = await response.json();
-                
-                if (!data.success) throw new Error(data.error || 'Erro desconhecido');
+                if (data.error) {
+                    throw new Error(data.error || 'Erro desconhecido');
+                }
                 
                 window.cardsLoaded = true;
-                renderCardsHistory(data.data);
+                renderCardsHistory(data.cards_history || data.cards || []);
                 
             } catch (error) {
                 console.error('Erro ao carregar histórico de cartões:', error);
@@ -684,6 +730,7 @@
                     <div class="empty-state">
                         <i class="fas fa-exclamation-triangle fa-2x"></i>
                         <p>Erro ao carregar histórico de cartões</p>
+                        <p style="font-size: 0.9rem; margin-top: 10px;">${error.message}</p>
                     </div>
                 `;
             }
@@ -692,29 +739,23 @@
         // Carregar informações da conta
         async function loadAccountInfo() {
             try {
-                const tg = window.Telegram?.WebApp;
-                if (!tg) throw new Error('Telegram não detectado');
-
                 showLoading('accountInfo');
                 
-                const response = await fetch(`${API_BASE_URL}/user/info`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        initData: tg.initData
-                    })
-                });
-
-                if (!response.ok) throw new Error('Erro na API');
+                const data = await sendAuthenticatedRequest(API_USER_INFO_URL);
                 
-                const data = await response.json();
-                
-                if (!data.success) throw new Error(data.error || 'Erro desconhecido');
+                if (data.error) {
+                    throw new Error(data.error || 'Erro desconhecido');
+                }
                 
                 window.accountLoaded = true;
-                renderAccountInfo(data.data);
+                
+                // Se ainda não temos informações do usuário, atualize
+                if (!currentUser && data.user) {
+                    currentUser = data.user;
+                    updateUserInfo();
+                }
+                
+                renderAccountInfo(data.user || data);
                 
             } catch (error) {
                 console.error('Erro ao carregar informações da conta:', error);
@@ -722,6 +763,7 @@
                     <div class="empty-state">
                         <i class="fas fa-exclamation-triangle fa-2x"></i>
                         <p>Erro ao carregar informações da conta</p>
+                        <p style="font-size: 0.9rem; margin-top: 10px;">${error.message}</p>
                     </div>
                 `;
             }
@@ -735,40 +777,77 @@
             const name = document.getElementById('userName');
             const id = document.getElementById('userId');
             
-            avatar.textContent = currentUser.name_user?.charAt(0) || currentUser.username?.charAt(0) || 'U';
-            name.textContent = currentUser.name_user || currentUser.username || 'Usuário';
-            id.textContent = `ID: ${currentUser.id}`;
+            // Extrair iniciais para o avatar
+            let initials = 'U';
+            if (currentUser.name_user) {
+                initials = currentUser.name_user.charAt(0).toUpperCase();
+            } else if (currentUser.username) {
+                initials = currentUser.username.charAt(0).toUpperCase();
+            } else if (currentUser.name) {
+                initials = currentUser.name.charAt(0).toUpperCase();
+            }
+            
+            avatar.textContent = initials;
+            name.textContent = currentUser.name_user || currentUser.username || currentUser.name || 'Usuário';
+            id.textContent = `ID: ${currentUser.id || currentUser.user_id || 'N/A'}`;
         }
 
         function updateStats(data) {
-            document.getElementById('balance').textContent = currentUser?.balance_formatted || 'R$ 0,00';
-            document.getElementById('diamonds').textContent = currentUser?.balance_diamonds || 0;
-            document.getElementById('smsReceived').textContent = data.counts?.sms || 0;
-            document.getElementById('cardsBought').textContent = data.counts?.cards || 0;
+            // Formatar valores monetários
+            let balance = 'R$ 0,00';
+            if (currentUser?.balance) {
+                const balanceNum = parseFloat(currentUser.balance);
+                balance = `R$ ${balanceNum.toFixed(2).replace('.', ',')}`;
+            } else if (data.balance) {
+                const balanceNum = parseFloat(data.balance);
+                balance = `R$ ${balanceNum.toFixed(2).replace('.', ',')}`;
+            }
+            
+            document.getElementById('balance').textContent = balance;
+            document.getElementById('diamonds').textContent = currentUser?.balance_diamonds || data.balance_diamonds || 0;
+            document.getElementById('smsReceived').textContent = data.counts?.sms || data.sms_count || 0;
+            document.getElementById('cardsBought').textContent = data.counts?.cards || data.cards_count || 0;
         }
 
         function updateRecentActivity(smsHistory, cardsHistory) {
             const recentActivity = document.getElementById('recentActivity');
             
             // Combinar e ordenar por data
-            const allActivities = [
-                ...(smsHistory || []).map(sms => ({
-                    type: 'sms',
-                    date: sms.bought_date,
-                    description: `SMS: ${sms.servico}`,
-                    value: sms.valor_formatted,
-                    status: sms.recebido
-                })),
-                ...(cardsHistory || []).map(card => ({
-                    type: 'card',
-                    date: card.bought_date,
-                    description: `Cartão ${card.bank} - ${card.level}`,
-                    value: 'GG',
-                    status: card.status
-                }))
-            ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
+            const allActivities = [];
             
-            if (allActivities.length === 0) {
+            // Adicionar atividades de SMS
+            if (smsHistory && Array.isArray(smsHistory)) {
+                smsHistory.forEach(sms => {
+                    allActivities.push({
+                        type: 'sms',
+                        date: sms.bought_date || sms.created_at || new Date().toISOString(),
+                        description: `SMS: ${sms.servico || 'Serviço SMS'}`,
+                        value: sms.valor_formatted || 'R$ 0,00',
+                        status: sms.recebido || 'Pendente'
+                    });
+                });
+            }
+            
+            // Adicionar atividades de cartões
+            if (cardsHistory && Array.isArray(cardsHistory)) {
+                cardsHistory.forEach(card => {
+                    allActivities.push({
+                        type: 'card',
+                        date: card.bought_date || card.created_at || new Date().toISOString(),
+                        description: `Cartão ${card.bank || 'Banco'} - ${card.level || 'Nível'}`,
+                        value: 'GG',
+                        status: card.status || 'Pendente'
+                    });
+                });
+            }
+            
+            // Ordenar por data (mais recente primeiro)
+            allActivities.sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            // Pegar apenas os 10 mais recentes
+            const recent = allActivities.slice(0, 10);
+            
+            if (recent.length === 0) {
                 recentActivity.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-inbox fa-2x"></i>
@@ -791,7 +870,7 @@
                     <tbody>
             `;
             
-            allActivities.forEach(activity => {
+            recent.forEach(activity => {
                 const statusClass = getStatusClass(activity.status);
                 const icon = activity.type === 'sms' ? 'fa-sms' : 'fa-credit-card';
                 
@@ -835,24 +914,22 @@
                             <th>Valor</th>
                             <th>Data</th>
                             <th>Status</th>
-                            <th>Ordem</th>
                         </tr>
                     </thead>
                     <tbody>
             `;
             
             smsList.forEach(sms => {
-                const statusClass = getStatusClass(sms.recebido);
+                const statusClass = getStatusClass(sms.recebido || sms.status);
                 
                 html += `
                     <tr>
-                        <td>#${sms.id}</td>
-                        <td>${sms.servico}</td>
-                        <td>${sms.numero}</td>
-                        <td>${sms.valor_formatted}</td>
-                        <td>${formatDate(sms.bought_date)}</td>
-                        <td><span class="badge ${statusClass}">${sms.recebido}</span></td>
-                        <td>${sms.ordemid || 'N/A'}</td>
+                        <td>#${sms.id || 'N/A'}</td>
+                        <td>${sms.servico || 'N/A'}</td>
+                        <td>${sms.numero || 'N/A'}</td>
+                        <td>${sms.valor_formatted || sms.valor || 'N/A'}</td>
+                        <td>${formatDate(sms.bought_date || sms.created_at)}</td>
+                        <td><span class="badge ${statusClass}">${sms.recebido || sms.status || 'N/A'}</span></td>
                     </tr>
                 `;
             });
@@ -882,8 +959,6 @@
                             <th>Banco</th>
                             <th>País</th>
                             <th>Nível</th>
-                            <th>Plano</th>
-                            <th>Fornecedor</th>
                             <th>Data</th>
                             <th>Status</th>
                         </tr>
@@ -892,18 +967,17 @@
             `;
             
             cardsList.forEach(card => {
-                const statusClass = card.is_checked ? 'badge-success' : 'badge-warning';
+                const statusClass = getStatusClass(card.status);
+                const checkedClass = card.is_checked ? 'badge-success' : 'badge-warning';
                 
                 html += `
                     <tr>
-                        <td>${card.ref}</td>
-                        <td>${card.bank}</td>
-                        <td>${card.country}</td>
-                        <td><span class="badge badge-info">${card.level}</span></td>
-                        <td>${card.plan}</td>
-                        <td>${card.vendor}</td>
-                        <td>${formatDate(card.bought_date)}</td>
-                        <td><span class="badge ${statusClass}">${card.status}</span></td>
+                        <td>${card.ref || 'N/A'}</td>
+                        <td>${card.bank || 'N/A'}</td>
+                        <td>${card.country || 'N/A'}</td>
+                        <td><span class="badge badge-info">${card.level || 'N/A'}</span></td>
+                        <td>${formatDate(card.bought_date || card.created_at)}</td>
+                        <td><span class="badge ${card.is_checked !== undefined ? checkedClass : statusClass}">${card.status || (card.is_checked ? 'Verificado' : 'Pendente')}</span></td>
                     </tr>
                 `;
             });
@@ -933,11 +1007,6 @@
                     </div>
                     
                     <div>
-                        <div style="font-size: 0.9rem; color: var(--muted); margin-bottom: 5px;">CPF</div>
-                        <div style="font-size: 1.1rem; font-weight: 500;">${userData.cpf || 'Não definido'}</div>
-                    </div>
-                    
-                    <div>
                         <div style="font-size: 0.9rem; color: var(--muted); margin-bottom: 5px;">Status da Conta</div>
                         <div>
                             <span class="badge ${userData.is_blacklisted ? 'badge-danger' : 'badge-success'}">
@@ -947,8 +1016,8 @@
                     </div>
                     
                     <div>
-                        <div style="font-size: 0.9rem; color: var(--muted); margin-bottom: 5px;">Última Compra</div>
-                        <div style="font-size: 1.1rem; font-weight: 500;">${formatDate(userData.last_bought) || 'Nenhuma'}</div>
+                        <div style="font-size: 0.9rem; color: var(--muted); margin-bottom: 5px;">Última Atividade</div>
+                        <div style="font-size: 1.1rem; font-weight: 500;">${formatDate(userData.last_bought || userData.last_activity || userData.created_at) || 'Nenhuma'}</div>
                     </div>
                 </div>
             `;
@@ -986,12 +1055,14 @@
         }
 
         function getStatusClass(status) {
-            const statusText = (status || '').toLowerCase();
-            if (statusText.includes('recebido') || statusText.includes('sucesso') || statusText.includes('verificado')) {
+            if (!status) return 'badge-info';
+            
+            const statusText = status.toLowerCase();
+            if (statusText.includes('recebido') || statusText.includes('sucesso') || statusText.includes('verificado') || statusText.includes('aprovado')) {
                 return 'badge-success';
-            } else if (statusText.includes('pendente')) {
+            } else if (statusText.includes('pendente') || statusText.includes('processando')) {
                 return 'badge-warning';
-            } else if (statusText.includes('erro') || statusText.includes('falha')) {
+            } else if (statusText.includes('erro') || statusText.includes('falha') || statusText.includes('cancelado')) {
                 return 'badge-danger';
             }
             return 'badge-info';
@@ -1007,6 +1078,22 @@
                 });
             } catch {
                 return dateString;
+            }
+        }
+
+        // Função para mostrar notificação no Telegram
+        function showTelegramAlert(message) {
+            if (tg && tg.showAlert) {
+                tg.showAlert(message);
+            } else {
+                alert(message);
+            }
+        }
+
+        // Função para fechar o WebApp
+        function closeWebApp() {
+            if (tg && tg.close) {
+                tg.close();
             }
         }
     </script>
