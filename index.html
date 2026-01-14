@@ -547,7 +547,7 @@
             initTelegramWebApp();
         });
 
-        // ✅ INICIALIZAR TELEGRAM WEBAPP - CORRIGIDO
+        // INICIALIZAR TELEGRAM WEBAPP
         function initTelegramWebApp() {
             if (window.Telegram && window.Telegram.WebApp) {
                 tg = window.Telegram.WebApp;
@@ -566,14 +566,14 @@
                 tg.ready();
                 
                 console.log('✅ Telegram WebApp inicializado');
-                console.log('initData:', tg.initData ? 'PRESENTE ✅' : 'AUSENTE ❌');
+                console.log('initData presente?', !!tg.initData);
+                console.log('initData (primeiros 100 chars):', tg.initData ? tg.initData.substring(0, 100) + '...' : 'Vazio');
                 
                 // Carregar dados iniciais
                 loadDashboard();
                 
             } else {
-                // ✅ CORREÇÃO: NÃO SIMULAR initData FALSO
-                console.warn('❌ Telegram WebApp não detectado.');
+                console.error('❌ Telegram WebApp não detectado');
                 showError('Abra este painel pelo Telegram (bot) para carregar seus dados.');
                 return;
             }
@@ -601,81 +601,81 @@
             }
         }
 
-        // Função para enviar dados autenticados
+        // ✅ FUNÇÃO PARA ENVIAR DADOS AUTENTICADOS - COM DEBUG COMPLETO
         async function sendAuthenticatedRequest(url, method = 'POST', data = {}) {
-            try {
-                const payload = {
-                    initData: tg.initData,
-                    ...data
-                };
-                
-                console.log('📤 Enviando requisição para:', url);
-                console.log('initData presente?', tg.initData ? 'SIM ✅' : 'NÃO ❌');
-                
-                const response = await fetch(url, {
-                    method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(payload)
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`Erro HTTP: ${response.status}`);
-                }
-                
-                return await response.json();
-            } catch (error) {
-                console.error('❌ Erro na requisição:', error);
-                throw error;
+            const payload = { initData: tg?.initData || "", ...data };
+
+            console.log('📤 Enviando requisição para:', url);
+            console.log('initData presente?', tg?.initData ? 'SIM' : 'NÃO');
+            console.log('Payload:', JSON.stringify(payload).substring(0, 200) + '...');
+
+            const resp = await fetch(url, {
+                method,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+
+            const text = await resp.text(); // pega corpo SEMPRE
+
+            // tenta parsear JSON, mas não quebra se não for
+            let json = null;
+            try { 
+                json = JSON.parse(text); 
+                console.log('📥 Resposta JSON:', json);
+            } catch(e) {
+                console.log('📥 Resposta NÃO-JSON:', text.substring(0, 200));
             }
+
+            // se deu erro HTTP, joga a mensagem completa
+            if (!resp.ok) {
+                console.error(`❌ HTTP ${resp.status}:`, text);
+                throw new Error(`HTTP ${resp.status} - ${text}`);
+            }
+
+            // se não conseguiu parsear JSON, ainda retorna algo
+            return json ?? { raw: text };
         }
 
-        // ✅ FUNÇÃO PRINCIPAL PARA CARREGAR DASHBOARD - CORRIGIDA
+        // FUNÇÃO PRINCIPAL PARA CARREGAR DASHBOARD
         async function loadDashboard() {
             try {
                 showLoading('recentActivity');
                 
                 const res = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
-                // ✅ CORREÇÃO: Verificar success ao invés de error
+                // Verificar se a resposta tem sucesso
                 if (!res.success) {
                     throw new Error(res.error || 'Erro desconhecido');
                 }
                 
-                // ✅ CORREÇÃO: Usar res.user (não data.user || data)
                 currentUser = res.user;
                 updateUserInfo();
                 
-                // ✅ CORREÇÃO: Usar res para estatísticas
                 updateStats(res);
                 
-                // ✅ CORREÇÃO: Usar res.counts (não data.counts)
                 document.getElementById('smsCount').textContent = res.counts?.sms || 0;
                 document.getElementById('cardsCount').textContent = res.counts?.cards || 0;
                 
-                // ✅ CORREÇÃO: Usar res.sms_history e res.cards_history
                 updateRecentActivity(res.sms_history || [], res.cards_history || []);
                 
             } catch (error) {
-                console.error('Erro ao carregar dashboard:', error);
-                showError('Erro ao carregar dados. Tente novamente.');
+                console.error('❌ Erro ao carregar dashboard:', error);
+                // ✅ MOSTRA O ERRO REAL
+                showError(error.message);
             }
         }
 
-        // ✅ FUNÇÃO PARA CARREGAR INFORMAÇÕES DA CONTA - CORRIGIDA
+        // FUNÇÃO PARA CARREGAR INFORMAÇÕES DA CONTA
         async function loadAccountInfo() {
             try {
                 showLoading('accountInfo');
                 
                 const res = await sendAuthenticatedRequest(API_USER_INFO_URL);
                 
-                // ✅ CORREÇÃO: Verificar success
                 if (!res.success) {
                     throw new Error(res.error || "Erro desconhecido");
                 }
                 
-                // ✅ CORREÇÃO: Usar res.data (não res.user)
                 const user = res.data;
                 currentUser = user;
                 updateUserInfo();
@@ -695,14 +695,13 @@
             }
         }
 
-        // Carregar histórico de SMS - ATUALIZADO para usar a nova estrutura
+        // Carregar histórico de SMS
         async function loadSMSHistory() {
             try {
                 showLoading('smsTable');
                 
                 const res = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
-                // ✅ CORREÇÃO: Verificar success
                 if (!res.success) {
                     throw new Error(res.error || 'Erro desconhecido');
                 }
@@ -722,14 +721,13 @@
             }
         }
 
-        // Carregar histórico de cartões - ATUALIZADO para usar a nova estrutura
+        // Carregar histórico de cartões
         async function loadCardsHistory() {
             try {
                 showLoading('cardsTable');
                 
                 const res = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
-                // ✅ CORREÇÃO: Verificar success
                 if (!res.success) {
                     throw new Error(res.error || 'Erro desconhecido');
                 }
@@ -1024,11 +1022,16 @@
                 <div class="card">
                     <div style="text-align: center; padding: 40px;">
                         <i class="fas fa-exclamation-triangle fa-3x" style="color: var(--danger); margin-bottom: 20px;"></i>
-                        <h3 style="margin-bottom: 10px;">Atenção</h3>
-                        <p>${message}</p>
-                        <p style="font-size: 0.9rem; color: var(--muted); margin-top: 15px;">
-                            ⚠️ Este WebApp só funciona dentro do Telegram Bot
+                        <h3 style="margin-bottom: 10px;">Erro na API</h3>
+                        <div style="background: var(--dark); padding: 15px; border-radius: 8px; margin: 15px 0; text-align: left; font-family: monospace; font-size: 0.9rem; overflow-wrap: break-word;">
+                            ${message}
+                        </div>
+                        <p style="font-size: 0.9rem; color: var(--muted);">
+                            Verifique os logs do servidor para mais detalhes
                         </p>
+                        <button class="btn btn-primary" onclick="loadDashboard()" style="margin-top: 20px;">
+                            <i class="fas fa-sync-alt"></i> Tentar Novamente
+                        </button>
                     </div>
                 </div>
             `;
