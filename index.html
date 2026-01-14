@@ -547,10 +547,13 @@
             initTelegramWebApp();
         });
 
-        // Inicializar Telegram WebApp
+        // ✅ INICIALIZAR TELEGRAM WEBAPP - CORRIGIDO
         function initTelegramWebApp() {
             if (window.Telegram && window.Telegram.WebApp) {
                 tg = window.Telegram.WebApp;
+                
+                // ✅ TESTE RÁPIDO (REMOVA DEPOIS)
+                alert("initData vazio? " + !tg.initData);
                 
                 // Configurar tema
                 tg.setHeaderColor('#2563eb');
@@ -562,42 +565,18 @@
                 // Preparar o app
                 tg.ready();
                 
-                // Mostrar botão principal (se necessário)
-                tg.MainButton.setText("RECARREGAR");
-                tg.MainButton.onClick(loadDashboard);
-                tg.MainButton.show();
-                
-                console.log('Telegram WebApp inicializado:', tg.initData);
+                console.log('✅ Telegram WebApp inicializado');
+                console.log('initData:', tg.initData ? 'PRESENTE ✅' : 'AUSENTE ❌');
                 
                 // Carregar dados iniciais
                 loadDashboard();
                 
             } else {
-                console.warn('Telegram WebApp não detectado. Modo de desenvolvimento ativado.');
-                showError('Acesse pelo Telegram para usar este WebApp. Modo de desenvolvimento ativado.');
-                // Para testes sem Telegram
-                simulateTelegramInit();
+                // ✅ CORREÇÃO: NÃO SIMULAR initData FALSO
+                console.warn('❌ Telegram WebApp não detectado.');
+                showError('Abra este painel pelo Telegram (bot) para carregar seus dados.');
+                return;
             }
-        }
-
-        // Simular inicialização do Telegram para testes
-        function simulateTelegramInit() {
-            tg = {
-                initData: 'fake_init_data_for_development',
-                expand: () => console.log('Simulando expandir'),
-                ready: () => console.log('Simulando ready'),
-                setHeaderColor: () => {},
-                setBackgroundColor: () => {},
-                MainButton: {
-                    setText: () => {},
-                    onClick: () => {},
-                    show: () => {},
-                    hide: () => {}
-                }
-            };
-            
-            // Carregar dados de teste
-            setTimeout(() => loadDashboard(), 1000);
         }
 
         // Funções de navegação
@@ -630,6 +609,9 @@
                     ...data
                 };
                 
+                console.log('📤 Enviando requisição para:', url);
+                console.log('initData presente?', tg.initData ? 'SIM ✅' : 'NÃO ❌');
+                
                 const response = await fetch(url, {
                     method: method,
                     headers: {
@@ -644,59 +626,89 @@
                 
                 return await response.json();
             } catch (error) {
-                console.error('Erro na requisição:', error);
+                console.error('❌ Erro na requisição:', error);
                 throw error;
             }
         }
 
-        // Função principal para carregar dashboard
+        // ✅ FUNÇÃO PRINCIPAL PARA CARREGAR DASHBOARD - CORRIGIDA
         async function loadDashboard() {
             try {
                 showLoading('recentActivity');
                 
-                const data = await sendAuthenticatedRequest(API_DASHBOARD_URL);
+                const res = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
-                // Verificar se a resposta tem sucesso
-                if (data.error) {
-                    throw new Error(data.error || 'Erro desconhecido');
+                // ✅ CORREÇÃO: Verificar success ao invés de error
+                if (!res.success) {
+                    throw new Error(res.error || 'Erro desconhecido');
                 }
                 
-                // Atualizar informações do usuário
-                currentUser = data.user || data;
+                // ✅ CORREÇÃO: Usar res.user (não data.user || data)
+                currentUser = res.user;
                 updateUserInfo();
                 
-                // Atualizar estatísticas
-                updateStats(data);
+                // ✅ CORREÇÃO: Usar res para estatísticas
+                updateStats(res);
                 
-                // Atualizar contadores
-                document.getElementById('smsCount').textContent = data.counts?.sms || data.sms_count || 0;
-                document.getElementById('cardsCount').textContent = data.counts?.cards || data.cards_count || 0;
+                // ✅ CORREÇÃO: Usar res.counts (não data.counts)
+                document.getElementById('smsCount').textContent = res.counts?.sms || 0;
+                document.getElementById('cardsCount').textContent = res.counts?.cards || 0;
                 
-                // Atualizar atividade recente
-                updateRecentActivity(data.sms_history || data.sms, data.cards_history || data.cards);
+                // ✅ CORREÇÃO: Usar res.sms_history e res.cards_history
+                updateRecentActivity(res.sms_history || [], res.cards_history || []);
                 
             } catch (error) {
                 console.error('Erro ao carregar dashboard:', error);
                 showError('Erro ao carregar dados. Tente novamente.');
-                
-                // Tenta carregar informações do usuário separadamente
-                loadAccountInfo();
             }
         }
 
-        // Carregar histórico de SMS
+        // ✅ FUNÇÃO PARA CARREGAR INFORMAÇÕES DA CONTA - CORRIGIDA
+        async function loadAccountInfo() {
+            try {
+                showLoading('accountInfo');
+                
+                const res = await sendAuthenticatedRequest(API_USER_INFO_URL);
+                
+                // ✅ CORREÇÃO: Verificar success
+                if (!res.success) {
+                    throw new Error(res.error || "Erro desconhecido");
+                }
+                
+                // ✅ CORREÇÃO: Usar res.data (não res.user)
+                const user = res.data;
+                currentUser = user;
+                updateUserInfo();
+                
+                window.accountLoaded = true;
+                renderAccountInfo(user);
+                
+            } catch (error) {
+                console.error('Erro ao carregar informações da conta:', error);
+                document.getElementById('accountInfo').innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                        <p>Erro ao carregar informações da conta</p>
+                        <p style="font-size: 0.9rem; margin-top: 10px;">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Carregar histórico de SMS - ATUALIZADO para usar a nova estrutura
         async function loadSMSHistory() {
             try {
                 showLoading('smsTable');
                 
-                const data = await sendAuthenticatedRequest(API_DASHBOARD_URL);
+                const res = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
-                if (data.error) {
-                    throw new Error(data.error || 'Erro desconhecido');
+                // ✅ CORREÇÃO: Verificar success
+                if (!res.success) {
+                    throw new Error(res.error || 'Erro desconhecido');
                 }
                 
                 window.smsLoaded = true;
-                renderSMSHistory(data.sms_history || data.sms || []);
+                renderSMSHistory(res.sms_history || []);
                 
             } catch (error) {
                 console.error('Erro ao carregar histórico SMS:', error);
@@ -710,19 +722,20 @@
             }
         }
 
-        // Carregar histórico de cartões
+        // Carregar histórico de cartões - ATUALIZADO para usar a nova estrutura
         async function loadCardsHistory() {
             try {
                 showLoading('cardsTable');
                 
-                const data = await sendAuthenticatedRequest(API_DASHBOARD_URL);
+                const res = await sendAuthenticatedRequest(API_DASHBOARD_URL);
                 
-                if (data.error) {
-                    throw new Error(data.error || 'Erro desconhecido');
+                // ✅ CORREÇÃO: Verificar success
+                if (!res.success) {
+                    throw new Error(res.error || 'Erro desconhecido');
                 }
                 
                 window.cardsLoaded = true;
-                renderCardsHistory(data.cards_history || data.cards || []);
+                renderCardsHistory(res.cards_history || []);
                 
             } catch (error) {
                 console.error('Erro ao carregar histórico de cartões:', error);
@@ -730,39 +743,6 @@
                     <div class="empty-state">
                         <i class="fas fa-exclamation-triangle fa-2x"></i>
                         <p>Erro ao carregar histórico de cartões</p>
-                        <p style="font-size: 0.9rem; margin-top: 10px;">${error.message}</p>
-                    </div>
-                `;
-            }
-        }
-
-        // Carregar informações da conta
-        async function loadAccountInfo() {
-            try {
-                showLoading('accountInfo');
-                
-                const data = await sendAuthenticatedRequest(API_USER_INFO_URL);
-                
-                if (data.error) {
-                    throw new Error(data.error || 'Erro desconhecido');
-                }
-                
-                window.accountLoaded = true;
-                
-                // Se ainda não temos informações do usuário, atualize
-                if (!currentUser && data.user) {
-                    currentUser = data.user;
-                    updateUserInfo();
-                }
-                
-                renderAccountInfo(data.user || data);
-                
-            } catch (error) {
-                console.error('Erro ao carregar informações da conta:', error);
-                document.getElementById('accountInfo').innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-exclamation-triangle fa-2x"></i>
-                        <p>Erro ao carregar informações da conta</p>
                         <p style="font-size: 0.9rem; margin-top: 10px;">${error.message}</p>
                     </div>
                 `;
@@ -798,15 +778,15 @@
             if (currentUser?.balance) {
                 const balanceNum = parseFloat(currentUser.balance);
                 balance = `R$ ${balanceNum.toFixed(2).replace('.', ',')}`;
-            } else if (data.balance) {
-                const balanceNum = parseFloat(data.balance);
+            } else if (data.user?.balance) {
+                const balanceNum = parseFloat(data.user.balance);
                 balance = `R$ ${balanceNum.toFixed(2).replace('.', ',')}`;
             }
             
             document.getElementById('balance').textContent = balance;
-            document.getElementById('diamonds').textContent = currentUser?.balance_diamonds || data.balance_diamonds || 0;
-            document.getElementById('smsReceived').textContent = data.counts?.sms || data.sms_count || 0;
-            document.getElementById('cardsBought').textContent = data.counts?.cards || data.cards_count || 0;
+            document.getElementById('diamonds').textContent = currentUser?.balance_diamonds || data.user?.balance_diamonds || 0;
+            document.getElementById('smsReceived').textContent = data.counts?.sms || 0;
+            document.getElementById('cardsBought').textContent = data.counts?.cards || 0;
         }
 
         function updateRecentActivity(smsHistory, cardsHistory) {
@@ -1044,11 +1024,11 @@
                 <div class="card">
                     <div style="text-align: center; padding: 40px;">
                         <i class="fas fa-exclamation-triangle fa-3x" style="color: var(--danger); margin-bottom: 20px;"></i>
-                        <h3 style="margin-bottom: 10px;">Erro</h3>
+                        <h3 style="margin-bottom: 10px;">Atenção</h3>
                         <p>${message}</p>
-                        <button class="btn btn-primary" onclick="loadDashboard()" style="margin-top: 20px;">
-                            <i class="fas fa-sync-alt"></i> Tentar Novamente
-                        </button>
+                        <p style="font-size: 0.9rem; color: var(--muted); margin-top: 15px;">
+                            ⚠️ Este WebApp só funciona dentro do Telegram Bot
+                        </p>
                     </div>
                 </div>
             `;
@@ -1078,22 +1058,6 @@
                 });
             } catch {
                 return dateString;
-            }
-        }
-
-        // Função para mostrar notificação no Telegram
-        function showTelegramAlert(message) {
-            if (tg && tg.showAlert) {
-                tg.showAlert(message);
-            } else {
-                alert(message);
-            }
-        }
-
-        // Função para fechar o WebApp
-        function closeWebApp() {
-            if (tg && tg.close) {
-                tg.close();
             }
         }
     </script>
