@@ -517,11 +517,11 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
     <script>
-        // Configuração da API - ENDPOINTS ATUALIZADOS
-        const API_BASE_URL = 'http://209.50.229.142';
-        const API_DASHBOARD_URL = `${API_BASE_URL}/api/dashboard/all`;
-        const API_USER_INFO_URL = `${API_BASE_URL}/api/user/info`;
-        const API_HEALTH_URL = `${API_BASE_URL}/health`;
+        // Configuração da API - URL BASE ATUALIZADA
+        const API_BASE = "https://discussions-way-sen-counter.trycloudflare.com";
+        const API_DASHBOARD_URL = `${API_BASE}/api/dashboard/all`;
+        const API_USER_INFO_URL = `${API_BASE}/api/user/info`;
+        const API_HEALTH_URL = `${API_BASE}/health`;
         
         let currentUser = null;
         let tg = null;
@@ -564,6 +564,7 @@
                 tg.ready();
                 
                 console.log('✅ Telegram WebApp inicializado');
+                console.log('URL Base:', API_BASE);
                 console.log('initData presente?', !!tg.initData);
                 console.log('initData (primeiros 100 chars):', tg.initData ? tg.initData.substring(0, 100) + '...' : 'Vazio');
                 
@@ -581,6 +582,7 @@
         async function testAPI() {
             try {
                 console.log('🔄 Testando conexão com API...');
+                console.log('URL de Health Check:', API_HEALTH_URL);
                 
                 // Testar endpoint de health
                 const healthResponse = await fetch(API_HEALTH_URL);
@@ -592,7 +594,7 @@
                 
             } catch (error) {
                 console.error('❌ Erro ao testar API:', error);
-                showError(`Falha ao conectar com a API. Verifique se o servidor está online.`);
+                showError(`Falha ao conectar com a API em ${API_BASE}. Verifique se o servidor está online.`);
             }
         }
 
@@ -1060,7 +1062,7 @@
                             ${message}
                         </div>
                         <p style="font-size: 0.9rem; color: var(--muted);">
-                            Verifique os logs do servidor para mais detalhes
+                            URL Base: ${API_BASE}
                         </p>
                         <button class="btn btn-primary" onclick="loadDashboard()" style="margin-top: 20px;">
                             <i class="fas fa-sync-alt"></i> Tentar Novamente
